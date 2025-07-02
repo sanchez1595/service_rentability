@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "name": "baby-store-calculator",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ]
+}
