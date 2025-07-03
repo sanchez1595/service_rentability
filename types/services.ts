@@ -185,7 +185,7 @@ export interface ItemCotizacionActual {
 export type CategoriaServicio = 'desarrollo' | 'diseño' | 'consultoria' | 'soporte' | 'capacitacion' | 'marketing' | 'otros';
 
 // Tipos de vistas
-export type VistaServicio = 'dashboard' | 'servicios' | 'cotizaciones' | 'proyectos' | 'clientes' | 'pagos' | 'desembolsos' | 'reportes' | 'configuracion';
+export type VistaServicio = 'dashboard' | 'servicios' | 'cotizaciones' | 'proyectos' | 'clientes' | 'pagos' | 'desembolsos' | 'reportes' | 'configuracion' | 'debug';
 
 // Tipos para métricas
 export interface MetricasServicio {
@@ -208,4 +208,44 @@ export interface ResumenProyecto {
   rentabilidadActual: number;
   diasRestantes: number;
   alertas: string[];
+}
+
+// Tipos para configuración, metas y alertas
+export interface Configuracion {
+  porcentajes: Record<string, number>;
+  costosFijos: Record<string, number>;
+  herramientas: Record<string, number>;
+  ventasEstimadas: number;
+  // Configuración de empresa y cotizaciones
+  empresa: {
+    nombre: string;
+    nit: string;
+    direccion: string;
+    telefono: string;
+    email: string;
+    ciudad: string;
+    logo?: string;
+  };
+  cotizaciones: {
+    validezDias: number;
+    ivaDefecto: number;
+    terminosCondiciones: string;
+    notaPie: string;
+    mostrarLogo: boolean;
+    formatoNumero: string; // Ej: "QUOTE-{YYYY}-{###}"
+  };
+}
+
+export interface Metas {
+  ventasMensuales: number;
+  unidadesMensuales: number;
+  margenPromedio: number;
+  rotacionInventario: number;
+}
+
+export interface Alertas {
+  margenMinimo: number;
+  stockMinimo: number;
+  diasSinVenta: number;
+  diferenciaPrecioCompetencia: number;
 }

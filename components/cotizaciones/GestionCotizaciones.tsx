@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { FileText, Plus, Edit2, Eye, Check, X, Clock, AlertTriangle, Search, Filter } from 'lucide-react';
-import { Cotizacion, Cliente, Servicio } from '../../types/services';
+import { FileText, Plus, Edit2, Eye, Check, X, Clock, AlertTriangle, Search, Filter, Trash2 } from 'lucide-react';
+import { Cotizacion, Cliente, Servicio, Configuracion } from '../../types/services';
 import { ESTADOS_COTIZACION } from '../../utils/servicesConstants';
 import { formatearMoneda } from '../../utils/formatters';
 import { CrearCotizacion } from './CrearCotizacion';
@@ -10,20 +10,24 @@ interface GestionCotizacionesProps {
   cotizaciones: Cotizacion[];
   clientes: Cliente[];
   servicios: Servicio[];
+  configuracion: Configuracion;
   onCrearCotizacion: (cotizacion: any, items: any[]) => Promise<void>;
   onActualizarCotizacion: (id: string, cotizacion: Partial<Cotizacion>) => Promise<void>;
   onAprobarCotizacion: (id: string) => Promise<void>;
   onRechazarCotizacion: (id: string, motivo: string) => Promise<void>;
+  onEliminarCotizacion: (id: string) => Promise<void>;
 }
 
 export const GestionCotizaciones: React.FC<GestionCotizacionesProps> = ({
   cotizaciones,
   clientes,
   servicios,
+  configuracion,
   onCrearCotizacion,
   onActualizarCotizacion,
   onAprobarCotizacion,
-  onRechazarCotizacion
+  onRechazarCotizacion,
+  onEliminarCotizacion
 }) => {
   const [vistaActiva, setVistaActiva] = useState<'lista' | 'crear' | 'ver'>('lista');
   const [cotizacionSeleccionada, setCotizacionSeleccionada] = useState<Cotizacion | null>(null);
@@ -61,6 +65,18 @@ export const GestionCotizaciones: React.FC<GestionCotizacionesProps> = ({
     setVistaActiva('ver');
   };
 
+  const manejarEnviar = async (id: string) => {
+    if (confirm('¿Confirmas el envío de esta cotización al cliente?')) {
+      try {
+        await onActualizarCotizacion(id, { estado: 'enviada' });
+        alert('Cotización enviada exitosamente');
+      } catch (error) {
+        console.error('Error al enviar cotización:', error);
+        alert('Error al enviar la cotización');
+      }
+    }
+  };
+
   const manejarAprobar = async (id: string) => {
     if (confirm('¿Confirmas la aprobación de esta cotización? Se creará automáticamente un proyecto.')) {
       try {
@@ -81,6 +97,18 @@ export const GestionCotizaciones: React.FC<GestionCotizacionesProps> = ({
       } catch (error) {
         console.error('Error al rechazar cotización:', error);
         alert('Error al rechazar la cotización');
+      }
+    }
+  };
+
+  const manejarEliminar = async (id: string) => {
+    if (confirm('¿Estás seguro de que deseas eliminar esta cotización? Esta acción no se puede deshacer.')) {
+      try {
+        await onEliminarCotizacion(id);
+        alert('Cotización eliminada exitosamente');
+      } catch (error) {
+        console.error('Error al eliminar cotización:', error);
+        alert('Error al eliminar la cotización');
       }
     }
   };
@@ -122,6 +150,7 @@ export const GestionCotizaciones: React.FC<GestionCotizacionesProps> = ({
         cotizacion={cotizacionSeleccionada}
         clientes={clientes}
         servicios={servicios}
+        configuracion={configuracion}
         onVolver={() => {
           setVistaActiva('lista');
           setCotizacionSeleccionada(null);
@@ -322,6 +351,16 @@ export const GestionCotizaciones: React.FC<GestionCotizacionesProps> = ({
                         <Eye className="w-5 h-5" />
                       </button>
 
+                      {cotizacion.estado === 'borrador' && (
+                        <button
+                          onClick={() => manejarEnviar(cotizacion.id)}
+                          className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Enviar cotización al cliente"
+                        >
+                          <Clock className="w-5 h-5" />
+                        </button>
+                      )}
+
                       {cotizacion.estado === 'enviada' && (
                         <>
                           <button
@@ -339,6 +378,17 @@ export const GestionCotizaciones: React.FC<GestionCotizacionesProps> = ({
                             <X className="w-5 h-5" />
                           </button>
                         </>
+                      )}
+                      
+                      {/* Botón de eliminar disponible para cotizaciones en borrador o rechazadas */}
+                      {(cotizacion.estado === 'borrador' || cotizacion.estado === 'rechazada') && (
+                        <button
+                          onClick={() => manejarEliminar(cotizacion.id)}
+                          className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar cotización"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
                       )}
                     </div>
                   </div>

@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Download, Check, X, Edit2, Calendar, User, Building, Mail, FileText } from 'lucide-react';
-import { Cotizacion, Cliente, Servicio } from '../../types/services';
+import { ArrowLeft, Download, Check, X, Edit2, Calendar, User, Building, Mail, FileText, Clock } from 'lucide-react';
+import { Cotizacion, Cliente, Servicio, Configuracion } from '../../types/services';
 import { ESTADOS_COTIZACION } from '../../utils/servicesConstants';
 import { formatearMoneda } from '../../utils/formatters';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface VerCotizacionProps {
   cotizacion: Cotizacion;
   clientes: Cliente[];
   servicios: Servicio[];
+  configuracion: Configuracion;
   onVolver: () => void;
   onAprobar: (id: string) => Promise<void>;
   onRechazar: (id: string, motivo: string) => Promise<void>;
@@ -18,6 +21,7 @@ export const VerCotizacion: React.FC<VerCotizacionProps> = ({
   cotizacion,
   clientes,
   servicios,
+  configuracion,
   onVolver,
   onAprobar,
   onRechazar,
@@ -72,6 +76,197 @@ export const VerCotizacion: React.FC<VerCotizacionProps> = ({
     setMotivoRechazo('');
   };
 
+  const generarPDF = () => {
+    const doc = new jsPDF();
+    
+    // Configurar fuente
+    doc.setFont('helvetica');
+    
+    // Header de la empresa
+    doc.setFontSize(20);
+    doc.setTextColor(51, 51, 51);
+    doc.text('COTIZACIÓN', 20, 25);
+    
+    doc.setFontSize(14);
+    doc.setTextColor(59, 130, 246);
+    doc.text(cotizacion.numero, 20, 35);
+    
+    // Información de la empresa desde configuración
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(configuracion.empresa?.nombre || 'Mi Empresa SAS', 140, 25);
+    doc.text(`NIT: ${configuracion.empresa?.nit || '123456789-0'}`, 140, 30);
+    doc.text(configuracion.empresa?.email || 'contacto@miempresa.com', 140, 35);
+    doc.text(configuracion.empresa?.telefono || '+57 300 123 4567', 140, 40);
+    if (configuracion.empresa?.direccion) {
+      doc.text(configuracion.empresa.direccion, 140, 45);
+    }
+    if (configuracion.empresa?.ciudad) {
+      doc.text(configuracion.empresa.ciudad, 140, 50);
+    }
+    
+    // Información del cliente
+    doc.setFontSize(12);
+    doc.setTextColor(51, 51, 51);
+    doc.text('INFORMACIÓN DEL CLIENTE', 20, 55);
+    
+    let yPosition = 65;
+    doc.setFontSize(10);
+    
+    if (cliente) {
+      doc.text(`Nombre: ${cliente.nombre}`, 20, yPosition);
+      yPosition += 5;
+      
+      if (cliente.empresa) {
+        doc.text(`Empresa: ${cliente.empresa}`, 20, yPosition);
+        yPosition += 5;
+      }
+      
+      if (cliente.nit) {
+        doc.text(`NIT/Cédula: ${cliente.nit}`, 20, yPosition);
+        yPosition += 5;
+      }
+      
+      if (cliente.email) {
+        doc.text(`Email: ${cliente.email}`, 20, yPosition);
+        yPosition += 5;
+      }
+      
+      if (cliente.telefono) {
+        doc.text(`Teléfono: ${cliente.telefono}`, 20, yPosition);
+        yPosition += 5;
+      }
+    }
+    
+    // Fechas
+    yPosition += 10;
+    doc.setFontSize(12);
+    doc.text('FECHAS', 20, yPosition);
+    yPosition += 10;
+    
+    doc.setFontSize(10);
+    doc.text(`Fecha de emisión: ${formatearFecha(cotizacion.fecha)}`, 20, yPosition);
+    yPosition += 5;
+    doc.text(`Válida hasta: ${formatearFecha(cotizacion.fechaValidez)}`, 20, yPosition);
+    yPosition += 15;
+    
+    // Tabla de servicios
+    const serviciosData = cotizacion.items?.map((item: any) => {
+      const servicio = servicios.find(s => s.id === item.servicio_id);
+      return [
+        servicio?.nombre || 'Servicio',
+        item.cantidad.toString(),
+        formatearMoneda(item.precio_unitario),
+        item.descuento_porcentaje ? `${item.descuento_porcentaje}%` : '0%',
+        formatearMoneda(item.subtotal)
+      ];
+    }) || [];
+    
+    autoTable(doc, {
+      head: [['Servicio', 'Cant.', 'Precio Unit.', 'Desc.', 'Subtotal']],
+      body: serviciosData,
+      startY: yPosition,
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [59, 130, 246],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold'
+      },
+      columnStyles: {
+        0: { cellWidth: 60 },
+        1: { cellWidth: 20, halign: 'center' },
+        2: { cellWidth: 30, halign: 'right' },
+        3: { cellWidth: 20, halign: 'center' },
+        4: { cellWidth: 30, halign: 'right' }
+      }
+    });
+    
+    // Totales
+    const finalY = (doc as any).lastAutoTable?.finalY || yPosition + (serviciosData.length * 10) + 20;
+    
+    doc.setFontSize(10);
+    const totalesX = 140;
+    
+    doc.text(`Subtotal: ${formatearMoneda(cotizacion.subtotal)}`, totalesX, finalY);
+    
+    if (cotizacion.descuentoValor > 0) {
+      doc.text(`Descuento (${cotizacion.descuentoPorcentaje}%): -${formatearMoneda(cotizacion.descuentoValor)}`, totalesX, finalY + 5);
+    }
+    
+    doc.text(`IVA: ${formatearMoneda(cotizacion.iva)}`, totalesX, finalY + (cotizacion.descuentoValor > 0 ? 10 : 5));
+    
+    // Total final
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TOTAL: ${formatearMoneda(cotizacion.total)}`, totalesX, finalY + (cotizacion.descuentoValor > 0 ? 18 : 13));
+    
+    // Términos y condiciones
+    const terminosAUsar = cotizacion.terminosCondiciones || configuracion.cotizaciones?.terminosCondiciones || '';
+    if (terminosAUsar) {
+      let terminosY = finalY + 30;
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('TÉRMINOS Y CONDICIONES', 20, terminosY);
+      
+      terminosY += 10;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      
+      const terminos = terminosAUsar.split('\n');
+      terminos.forEach(linea => {
+        if (terminosY > 270) { // Si está cerca del final de la página
+          doc.addPage();
+          terminosY = 20;
+        }
+        doc.text(linea, 20, terminosY);
+        terminosY += 4;
+      });
+    }
+    
+    // Notas
+    if (cotizacion.notas) {
+      let notasY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 50 : 200;
+      
+      if (notasY > 250) {
+        doc.addPage();
+        notasY = 20;
+      }
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('NOTAS', 20, notasY);
+      
+      notasY += 10;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      
+      const notas = cotizacion.notas.split('\n');
+      notas.forEach(linea => {
+        if (notasY > 270) {
+          doc.addPage();
+          notasY = 20;
+        }
+        doc.text(linea, 20, notasY);
+        notasY += 4;
+      });
+    }
+    
+    // Nota al pie
+    if (configuracion.cotizaciones?.notaPie) {
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(configuracion.cotizaciones.notaPie, 20, pageHeight - 15);
+    }
+    
+    // Guardar el PDF
+    const nombreArchivo = `cotizacion-${cotizacion.numero.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+    doc.save(nombreArchivo);
+  };
+
   const diasVencimiento = calcularDiasVencimiento(cotizacion.fechaValidez);
   const estaVencida = diasVencimiento < 0 && cotizacion.estado === 'enviada';
 
@@ -107,9 +302,23 @@ export const VerCotizacion: React.FC<VerCotizacionProps> = ({
           </div>
 
           <div className="flex items-center space-x-3">
-            <button className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+            <button 
+              onClick={generarPDF}
+              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              title="Descargar PDF"
+            >
               <Download className="w-5 h-5" />
             </button>
+            
+            {cotizacion.estado === 'borrador' && (
+              <button
+                onClick={() => onActualizar(cotizacion.id, { estado: 'enviada' })}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center space-x-2"
+              >
+                <Clock className="w-4 h-4" />
+                <span>Enviar al Cliente</span>
+              </button>
+            )}
             
             {cotizacion.estado === 'enviada' && (
               <>

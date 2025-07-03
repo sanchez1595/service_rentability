@@ -176,15 +176,17 @@ export const calcularPrecioServicio = (
 };
 
 // Formatos de número para servicios
-export const formatearDuracion = (dias: number): string => {
-  if (dias === 0) return 'Inmediato';
-  if (dias === 1) return '1 día';
-  if (dias < 7) return `${dias} días`;
-  if (dias === 7) return '1 semana';
-  if (dias < 30) return `${Math.ceil(dias / 7)} semanas`;
-  if (dias === 30) return '1 mes';
-  if (dias < 365) return `${Math.ceil(dias / 30)} meses`;
-  return `${Math.ceil(dias / 365)} año${dias >= 730 ? 's' : ''}`;
+export const formatearDuracion = (dias: number | string): string => {
+  const diasNum = typeof dias === 'string' ? parseInt(dias) || 0 : dias || 0;
+  
+  if (diasNum === 0) return 'Inmediato';
+  if (diasNum === 1) return '1 día';
+  if (diasNum < 7) return `${diasNum} días`;
+  if (diasNum === 7) return '1 semana';
+  if (diasNum < 30) return `${Math.ceil(diasNum / 7)} semanas`;
+  if (diasNum === 30) return '1 mes';
+  if (diasNum < 365) return `${Math.ceil(diasNum / 30)} meses`;
+  return `${Math.ceil(diasNum / 365)} año${diasNum >= 730 ? 's' : ''}`;
 };
 
 // Colores para métricas

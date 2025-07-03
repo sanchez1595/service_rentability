@@ -12,6 +12,27 @@ export const formatearInput = (valor: string | number): string => {
   return new Intl.NumberFormat('es-CO').format(numero);
 };
 
+export const formatearInputDecimal = (valor: string | number): string => {
+  if (!valor) return '';
+  // Permitir números y un punto decimal
+  const valorLimpio = valor.toString().replace(/[^\d.]/g, '');
+  if (!valorLimpio) return '';
+  
+  // Asegurar que solo haya un punto decimal
+  const partes = valorLimpio.split('.');
+  if (partes.length > 2) {
+    return partes[0] + '.' + partes.slice(1).join('');
+  }
+  
+  const numero = parseFloat(valorLimpio);
+  if (isNaN(numero)) return '';
+  
+  return new Intl.NumberFormat('es-CO', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  }).format(numero);
+};
+
 export const parsearInput = (valor: string | number): string => {
   if (!valor) return '';
   const soloNumeros = valor.toString().replace(/[^\d]/g, '');

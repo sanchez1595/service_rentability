@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Minus, Calendar, DollarSign } from 'lucide-react';
 import { Proyecto, PlanPago } from '../../types/services';
 import { TIPOS_PLAN_PAGO, PLANTILLAS_PLANES_PAGO } from '../../utils/servicesConstants';
@@ -18,12 +18,33 @@ interface PlanPagoFormData {
   porcentajeProyecto: string;
 }
 
-const PLAN_INICIAL: PlanPagoFormData = {
-  descripcion: '',
-  fechaVencimiento: '',
-  monto: '',
-  tipo: 'cuota',
-  porcentajeProyecto: ''
+const crearPlanInicial = (proyecto: Proyecto): PlanPagoFormData => {
+  console.log('🔍 DEBUG - Creando plan inicial con proyecto:', proyecto);
+  
+  const hoy = new Date();
+  const fechaDefecto = hoy.toISOString().split('T')[0];
+  
+  // Asegurar que hay un valor total válido
+  const valorTotal = proyecto.valorTotal || 0;
+  const montoDefecto = valorTotal > 0 ? (valorTotal * 0.5).toString() : '100000'; // 100k por defecto si no hay valor
+  
+  console.log('🔍 DEBUG - Valores calculados:', {
+    valorTotal,
+    montoDefecto,
+    fechaDefecto,
+    porcentaje: valorTotal > 0 ? '50' : '100'
+  });
+  
+  const planInicial = {
+    descripcion: 'Pago del proyecto',
+    fechaVencimiento: fechaDefecto,
+    monto: montoDefecto,
+    tipo: 'cuota' as const,
+    porcentajeProyecto: valorTotal > 0 ? '50' : '100'
+  };
+  
+  console.log('🔍 DEBUG - Plan inicial creado:', planInicial);
+  return planInicial;
 };
 
 export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
@@ -31,12 +52,22 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
   onCrear,
   onCerrar
 }) => {
-  const [planes, setPlanes] = useState<PlanPagoFormData[]>([{ ...PLAN_INICIAL }]);
+  console.log('🚀 DEBUG - CrearPlanPago iniciado con proyecto:', proyecto);
+  
+  const planInicial = crearPlanInicial(proyecto);
+  console.log('🚀 DEBUG - Plan inicial generado:', planInicial);
+  
+  const [planes, setPlanes] = useState<PlanPagoFormData[]>([planInicial]);
   const [plantillaSeleccionada, setPlantillaSeleccionada] = useState('');
   const [guardando, setGuardando] = useState(false);
+  
+  // Debug: Log cada vez que cambien los planes
+  useEffect(() => {
+    console.log('🔄 DEBUG - Planes actualizados:', planes);
+  }, [planes]);
 
   const agregarPlan = () => {
-    setPlanes([...planes, { ...PLAN_INICIAL }]);
+    setPlanes([...planes, crearPlanInicial(proyecto)]);
   };
 
   const eliminarPlan = (index: number) => {
@@ -46,6 +77,8 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
   };
 
   const actualizarPlan = (index: number, campo: keyof PlanPagoFormData, valor: string) => {
+    console.log(`🔧 DEBUG - Actualizando plan ${index}, campo: ${campo}, valor:`, valor);
+    
     const nuevosPlanes = [...planes];
     nuevosPlanes[index] = {
       ...nuevosPlanes[index],
@@ -55,17 +88,23 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
     // Si se actualiza el porcentaje, calcular el monto automáticamente
     if (campo === 'porcentajeProyecto') {
       const porcentaje = parseFloat(valor) || 0;
-      const monto = (proyecto.valorTotal * porcentaje / 100).toString();
+      const valorTotalProyecto = proyecto.valorTotal || 0;
+      const monto = valorTotalProyecto > 0 ? (valorTotalProyecto * porcentaje / 100).toString() : '0';
       nuevosPlanes[index].monto = monto;
+      console.log(`🔧 DEBUG - Calculado monto automático: ${monto} (${porcentaje}% de ${valorTotalProyecto})`);
     }
 
     // Si se actualiza el monto, calcular el porcentaje automáticamente
     if (campo === 'monto') {
-      const monto = parseFloat(valor.replace(/[^\d]/g, '')) || 0;
-      const porcentaje = proyecto.valorTotal > 0 ? (monto / proyecto.valorTotal * 100) : 0;
+      const montoLimpio = valor.replace(/[^\d]/g, '');
+      const monto = parseFloat(montoLimpio) || 0;
+      const valorTotalProyecto = proyecto.valorTotal || 0;
+      const porcentaje = valorTotalProyecto > 0 ? (monto / valorTotalProyecto * 100) : 0;
       nuevosPlanes[index].porcentajeProyecto = porcentaje.toFixed(1);
+      console.log(`🔧 DEBUG - Calculado porcentaje automático: ${porcentaje}% (${monto} de ${valorTotalProyecto})`);
     }
 
+    console.log(`🔧 DEBUG - Plan actualizado:`, nuevosPlanes[index]);
     setPlanes(nuevosPlanes);
   };
 
@@ -95,8 +134,19 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
       ]);
     } else if (plantilla === '40% - 40% - 20%') {
       const hoy = new Date();
-      const fechaInicio = new Date(proyecto.fechaInicio);
-      const fechaFin = new Date(proyecto.fechaFinEstimada);
+      
+      // Validar y convertir fechas
+      let fechaInicio = proyecto.fechaInicio ? new Date(proyecto.fechaInicio) : new Date(hoy);
+      let fechaFin = proyecto.fechaFinEstimada ? new Date(proyecto.fechaFinEstimada) : new Date(hoy.getTime() + 60 * 24 * 60 * 60 * 1000); // 60 días por defecto
+      
+      // Verificar que las fechas sean válidas
+      if (isNaN(fechaInicio.getTime())) {
+        fechaInicio = new Date(hoy);
+      }
+      if (isNaN(fechaFin.getTime())) {
+        fechaFin = new Date(hoy.getTime() + 60 * 24 * 60 * 60 * 1000);
+      }
+      
       const duracionTotal = fechaFin.getTime() - fechaInicio.getTime();
       const fechaMedio = new Date(fechaInicio.getTime() + duracionTotal / 2);
       
@@ -117,7 +167,7 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
         },
         {
           descripcion: 'Pago final del 20%',
-          fechaVencimiento: proyecto.fechaFinEstimada,
+          fechaVencimiento: proyecto.fechaFinEstimada || fechaFin.toISOString().split('T')[0],
           monto: (proyecto.valorTotal * 0.2).toString(),
           tipo: 'final',
           porcentajeProyecto: '20'
@@ -135,13 +185,47 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
   };
 
   const manejarGuardar = async () => {
-    // Validaciones
-    const planesInvalidos = planes.some(plan => 
-      !plan.descripcion || !plan.fechaVencimiento || !plan.monto
-    );
+    console.log('🔍 DEBUG - Validando planes antes de guardar:', planes);
+    console.log('🔍 DEBUG - Proyecto actual:', proyecto);
     
-    if (planesInvalidos) {
-      alert('Todos los campos son obligatorios');
+    // Validaciones detalladas
+    const errores: string[] = [];
+    
+    planes.forEach((plan, index) => {
+      const cuota = `Cuota #${index + 1}`;
+      
+      console.log(`🔍 DEBUG - Validando ${cuota}:`, plan);
+      
+      if (!plan.descripcion.trim()) {
+        errores.push(`${cuota}: Falta descripción`);
+        console.log(`❌ ERROR - ${cuota}: descripción vacía`);
+      }
+      
+      if (!plan.fechaVencimiento) {
+        errores.push(`${cuota}: Falta fecha de vencimiento`);
+        console.log(`❌ ERROR - ${cuota}: fecha vacía, valor:`, plan.fechaVencimiento);
+      }
+      
+      console.log(`🔍 DEBUG - ${cuota} monto original:`, plan.monto);
+      const montoLimpio = plan.monto.replace(/[^\d]/g, '');
+      console.log(`🔍 DEBUG - ${cuota} monto limpio:`, montoLimpio);
+      const montoNumerico = parseFloat(montoLimpio) || 0;
+      console.log(`🔍 DEBUG - ${cuota} monto numérico:`, montoNumerico);
+      
+      if (montoNumerico <= 0) {
+        errores.push(`${cuota}: El monto debe ser mayor a 0`);
+        console.log(`❌ ERROR - ${cuota}: monto inválido:`, montoNumerico);
+      }
+      
+      const porcentaje = parseFloat(plan.porcentajeProyecto) || 0;
+      if (porcentaje <= 0) {
+        errores.push(`${cuota}: El porcentaje debe ser mayor a 0`);
+        console.log(`❌ ERROR - ${cuota}: porcentaje inválido:`, porcentaje);
+      }
+    });
+    
+    if (errores.length > 0) {
+      alert('Se encontraron los siguientes errores:\n\n' + errores.join('\n'));
       return;
     }
 
@@ -188,7 +272,14 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
             <div>
               <h2 className="text-2xl font-bold text-slate-800">Crear Plan de Pagos</h2>
               <p className="text-slate-600">Proyecto: {proyecto.nombre}</p>
-              <p className="text-slate-600">Valor total: <span className="font-bold text-emerald-600">{formatearMoneda(proyecto.valorTotal)}</span></p>
+              <p className="text-slate-600">Valor total: <span className="font-bold text-emerald-600">{formatearMoneda(proyecto.valorTotal || 0)}</span></p>
+              {(!proyecto.valorTotal || proyecto.valorTotal === 0) && (
+                <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-sm text-orange-700">
+                    ⚠️ El proyecto no tiene valor total definido. Ajusta los montos manualmente.
+                  </p>
+                </div>
+              )}
             </div>
             <button
               onClick={onCerrar}
@@ -200,7 +291,23 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
 
           {/* Plantillas */}
           <div className="mb-6">
-            <h3 className="font-semibold text-slate-700 mb-3">Plantillas de Pago</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-slate-700">Plantillas de Pago</h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    console.log('🔄 DEBUG - Reiniciando planes con valores por defecto');
+                    setPlanes([crearPlanInicial(proyecto)]);
+                  }}
+                  className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+                >
+                  🔄 Reset
+                </button>
+                <div className="text-xs text-slate-500 bg-slate-50 px-2 py-1 rounded">
+                  💡 Usa las plantillas para configurar rápidamente
+                </div>
+              </div>
+            </div>
             <div className="grid md:grid-cols-3 gap-3">
               {PLANTILLAS_PLANES_PAGO.slice(0, 3).map((plantilla) => (
                 <button
@@ -220,7 +327,19 @@ export const CrearPlanPago: React.FC<CrearPlanPagoProps> = ({
           {/* Planes de pago */}
           <div className="space-y-4 mb-6">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-slate-700">Cuotas de Pago</h3>
+              <div>
+                <h3 className="font-semibold text-slate-700">Cuotas de Pago</h3>
+                <div className="flex items-center space-x-2 mt-1">
+                  <span className="text-sm text-slate-600">Total: {totalPorcentaje.toFixed(1)}%</span>
+                  <div className={`text-xs px-2 py-1 rounded-full ${
+                    Math.abs(totalPorcentaje - 100) < 0.1 
+                      ? 'bg-emerald-100 text-emerald-700' 
+                      : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {Math.abs(totalPorcentaje - 100) < 0.1 ? '✓ Completo' : '⚠ Ajustar'}
+                  </div>
+                </div>
+              </div>
               <button
                 onClick={agregarPlan}
                 className="bg-indigo-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-indigo-600 transition-colors flex items-center space-x-1"

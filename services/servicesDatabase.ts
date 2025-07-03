@@ -8,7 +8,8 @@ import {
   PlanPago,
   Pago,
   CategoriaDesembolso,
-  Desembolso
+  Desembolso,
+  Configuracion
 } from '../types/services';
 
 // ==================== CLIENTES ====================
@@ -86,13 +87,13 @@ export const serviciosService = {
     
     return (data || []).map(servicio => ({
       ...servicio,
-      costoBase: servicio.costo_base?.toString() || '0',
-      gastosFijos: servicio.gastos_fijos?.toString() || '0',
-      margenDeseado: servicio.margen_deseado?.toString() || '30',
-      precioSugerido: servicio.precio_sugerido?.toString() || '0',
+      costoBase: servicio.costo_base || 0,
+      gastosFijos: servicio.gastos_fijos || 0,
+      margenDeseado: servicio.margen_deseado || 30,
+      precioSugerido: servicio.precio_sugerido || 0,
       duracionEstimada: servicio.duracion_estimada || 1,
       tipoServicio: servicio.tipo_servicio || 'unico',
-      precioPorHora: servicio.precio_por_hora?.toString() || '0',
+      precioPorHora: servicio.precio_por_hora || 0,
       recursosNecesarios: servicio.recursos_necesarios,
       vecesCotizado: servicio.veces_cotizado || 0,
       vecesVendido: servicio.veces_vendido || 0
@@ -110,7 +111,7 @@ export const serviciosService = {
         gastos_fijos: parseFloat(servicio.gastosFijos) || 0,
         margen_deseado: parseFloat(servicio.margenDeseado) || 30,
         precio_sugerido: parseFloat(servicio.precioSugerido) || 0,
-        duracion_estimada: servicio.duracionEstimada,
+        duracion_estimada: typeof servicio.duracionEstimada === 'string' ? parseInt(servicio.duracionEstimada) || 1 : servicio.duracionEstimada || 1,
         tipo_servicio: servicio.tipoServicio,
         precio_por_hora: servicio.precioPorHora ? parseFloat(servicio.precioPorHora) : null,
         recursos_necesarios: servicio.recursosNecesarios,
@@ -133,7 +134,7 @@ export const serviciosService = {
     if (servicio.gastosFijos !== undefined) updateData.gastos_fijos = parseFloat(servicio.gastosFijos);
     if (servicio.margenDeseado !== undefined) updateData.margen_deseado = parseFloat(servicio.margenDeseado);
     if (servicio.precioSugerido !== undefined) updateData.precio_sugerido = parseFloat(servicio.precioSugerido);
-    if (servicio.duracionEstimada !== undefined) updateData.duracion_estimada = servicio.duracionEstimada;
+    if (servicio.duracionEstimada !== undefined) updateData.duracion_estimada = parseInt(servicio.duracionEstimada.toString()) || 1;
     if (servicio.tipoServicio !== undefined) updateData.tipo_servicio = servicio.tipoServicio;
     if (servicio.precioPorHora !== undefined) updateData.precio_por_hora = parseFloat(servicio.precioPorHora);
     if (servicio.recursosNecesarios !== undefined) updateData.recursos_necesarios = servicio.recursosNecesarios;
@@ -229,59 +230,81 @@ export const cotizacionesService = {
     return `QUOTE-${year}-${nextNumber.toString().padStart(3, '0')}`;
   },
 
-  async crear(cotizacion: Omit<Cotizacion, 'id' | 'created_at' | 'updated_at' | 'numero'>, items: ItemCotizacion[]) {
-    const numero = await this.generarNumero();
-    
-    // Crear cotización
-    const { data: cotizacionData, error: cotizacionError } = await supabase
-      .from('cotizaciones')
-      .insert([{
+  async crear(cotizacion: any, items: any[]) {
+    try {
+      const numero = await this.generarNumero();
+      
+      // Procesar y validar datos de cotización
+      const cotizacionData = {
         numero,
         cliente_id: cotizacion.clienteId,
         fecha: cotizacion.fecha,
         fecha_validez: cotizacion.fechaValidez,
-        estado: cotizacion.estado,
-        subtotal: cotizacion.subtotal,
-        descuento_porcentaje: cotizacion.descuentoPorcentaje,
-        descuento_valor: cotizacion.descuentoValor,
-        iva: cotizacion.iva,
-        total: cotizacion.total,
-        notas: cotizacion.notas,
-        terminos_condiciones: cotizacion.terminosCondiciones
-      }])
-      .select()
-      .single();
+        estado: cotizacion.estado || 'borrador',
+        subtotal: parseFloat(cotizacion.subtotal) || 0,
+        descuento_porcentaje: parseFloat(cotizacion.descuentoPorcentaje) || 0,
+        descuento_valor: parseFloat(cotizacion.descuentoValor) || 0,
+        iva: parseFloat(cotizacion.iva) || 0,
+        total: parseFloat(cotizacion.total) || 0,
+        notas: cotizacion.notas || '',
+        terminos_condiciones: cotizacion.terminosCondiciones || ''
+      };
+
+      console.log('Datos a insertar en cotización:', cotizacionData);
+      
+      // Crear cotización
+      const { data: nuevaCotizacion, error: cotizacionError } = await supabase
+        .from('cotizaciones')
+        .insert([cotizacionData])
+        .select()
+        .single();
     
-    if (cotizacionError) throw cotizacionError;
-    
-    // Crear items
-    if (items.length > 0) {
-      const itemsData = items.map((item, index) => ({
-        cotizacion_id: cotizacionData.id,
-        servicio_id: item.servicioId,
-        descripcion: item.descripcion,
-        cantidad: item.cantidad,
-        precio_unitario: item.precioUnitario,
-        descuento_porcentaje: item.descuentoPorcentaje || 0,
-        subtotal: item.subtotal,
-        notas: item.notas,
-        orden: index
-      }));
-      
-      const { error: itemsError } = await supabase
-        .from('items_cotizacion')
-        .insert(itemsData);
-      
-      if (itemsError) throw itemsError;
-      
-      // Actualizar contador de veces cotizado en servicios
-      const servicioIds = [...new Set(items.map(item => item.servicioId))];
-      for (const servicioId of servicioIds) {
-        await supabase.rpc('incrementar_veces_cotizado', { servicio_id: servicioId });
+      if (cotizacionError) {
+        console.error('Error al crear cotización:', cotizacionError);
+        throw cotizacionError;
       }
+      
+      // Crear items
+      if (items && items.length > 0) {
+        const itemsData = items.map((item, index) => ({
+          cotizacion_id: nuevaCotizacion.id,
+          servicio_id: item.servicioId,
+          descripcion: item.descripcion,
+          cantidad: parseFloat(item.cantidad) || 1,
+          precio_unitario: parseFloat(item.precioUnitario) || 0,
+          descuento_porcentaje: parseFloat(item.descuentoPorcentaje) || 0,
+          subtotal: parseFloat(item.subtotal) || 0,
+          notas: item.notas || '',
+          orden: index
+        }));
+        
+        console.log('Datos a insertar en items:', itemsData);
+        
+        const { error: itemsError } = await supabase
+          .from('items_cotizacion')
+          .insert(itemsData);
+        
+        if (itemsError) {
+          console.error('Error al crear items de cotización:', itemsError);
+          throw itemsError;
+        }
+        
+        // Actualizar contador de veces cotizado en servicios
+        const servicioIds = Array.from(new Set(items.map(item => item.servicioId).filter(id => id)));
+        for (const servicioId of servicioIds) {
+          try {
+            await supabase.rpc('incrementar_veces_cotizado', { servicio_id: servicioId });
+          } catch (rpcError) {
+            console.warn('Error al incrementar contador de cotizaciones:', rpcError);
+          }
+        }
+      }
+      
+      return nuevaCotizacion;
+    } catch (error) {
+      console.error('Error completo al crear cotización:', error);
+      throw error;
     }
-    
-    return cotizacionData;
   },
 
   async actualizar(id: string, cotizacion: Partial<Cotizacion>) {
@@ -320,7 +343,7 @@ export const cotizacionesService = {
     
     // Actualizar contador de veces vendido en servicios
     if (cotizacion.items) {
-      const servicioIds = [...new Set(cotizacion.items.map((item: any) => item.servicio_id))];
+      const servicioIds = Array.from(new Set(cotizacion.items.map((item: any) => item.servicio_id)));
       for (const servicioId of servicioIds) {
         await supabase.rpc('incrementar_veces_vendido', { servicio_id: servicioId });
       }
@@ -335,6 +358,22 @@ export const cotizacionesService = {
       fechaRechazo: new Date().toISOString().split('T')[0],
       motivoRechazo: motivo
     });
+  },
+
+  async eliminar(id: string) {
+    // Primero eliminar los items de la cotización
+    await supabase
+      .from('items_cotizacion')
+      .delete()
+      .eq('cotizacion_id', id);
+    
+    // Luego eliminar la cotización
+    const { error } = await supabase
+      .from('cotizaciones')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 };
 
@@ -845,3 +884,279 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 `;
+
+// ========================
+// SERVICIOS DE CONFIGURACIÓN
+// ========================
+
+export const configuracionService = {
+  async obtenerToda(): Promise<Configuracion> {
+    try {
+      const { data, error } = await supabase
+        .from('configuracion')
+        .select('*');
+
+      if (error) throw error;
+
+      // Configuración por defecto
+      const config: Configuracion = {
+        porcentajes: {},
+        costosFijos: {},
+        herramientas: {},
+        ventasEstimadas: 0,
+        empresa: {
+          nombre: 'Mi Empresa SAS',
+          nit: '123456789-0',
+          direccion: 'Calle 123 #45-67',
+          telefono: '+57 300 123 4567',
+          email: 'contacto@miempresa.com',
+          ciudad: 'Bogotá, Colombia'
+        },
+        cotizaciones: {
+          validezDias: 30,
+          ivaDefecto: 19,
+          terminosCondiciones: `1. Validez de la cotización: 30 días a partir de la fecha de emisión.
+2. Forma de pago: 50% anticipo, 50% contra entrega.
+3. Los precios no incluyen IVA.
+4. Cualquier trabajo adicional será cotizado por separado.
+5. El tiempo de entrega está sujeto a la aprobación de la cotización.`,
+          notaPie: 'Gracias por confiar en nosotros',
+          mostrarLogo: false,
+          formatoNumero: 'QUOTE-{YYYY}-{###}'
+        }
+      };
+
+      // Procesar datos existentes
+      data?.forEach(item => {
+        if (item.tipo === 'porcentaje') {
+          config.porcentajes[item.clave] = item.valor;
+        } else if (item.tipo === 'costo_fijo') {
+          config.costosFijos[item.clave] = item.valor;
+        } else if (item.tipo === 'herramienta') {
+          config.herramientas[item.clave] = item.valor;
+        } else if (item.tipo === 'general' && item.clave === 'ventas_estimadas') {
+          config.ventasEstimadas = item.valor;
+        } else if (item.tipo === 'empresa') {
+          (config.empresa as any)[item.clave] = typeof item.valor === 'string' ? item.valor : item.valor_texto || '';
+        } else if (item.tipo === 'cotizaciones') {
+          if (['validezDias', 'ivaDefecto'].includes(item.clave)) {
+            (config.cotizaciones as any)[item.clave] = item.valor;
+          } else {
+            (config.cotizaciones as any)[item.clave] = item.valor_texto || '';
+          }
+        }
+      });
+
+      return config;
+    } catch (error) {
+      console.error('Error obteniendo configuración:', error);
+      throw error;
+    }
+  },
+
+  async actualizar(tipo: string, clave: string, valor: number): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('configuracion')
+        .upsert({ tipo, clave, valor }, { onConflict: 'tipo,clave' });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error actualizando configuración:', error);
+      throw error;
+    }
+  },
+
+  async actualizarTexto(tipo: string, clave: string, valorTexto: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('configuracion')
+        .upsert({ 
+          tipo, 
+          clave, 
+          valor: 0, // Valor por defecto para evitar constraint NOT NULL
+          valor_texto: valorTexto 
+        }, { onConflict: 'tipo,clave' });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error actualizando configuración de texto:', error);
+      throw error;
+    }
+  },
+
+  async actualizarEmpresa(empresa: Partial<Configuracion['empresa']>): Promise<void> {
+    try {
+      const updates = Object.entries(empresa).map(([clave, valor]) => ({
+        tipo: 'empresa',
+        clave,
+        valor_texto: valor || ''
+      }));
+
+      for (const update of updates) {
+        await this.actualizarTexto(update.tipo, update.clave, update.valor_texto);
+      }
+    } catch (error) {
+      console.error('Error actualizando configuración de empresa:', error);
+      throw error;
+    }
+  },
+
+  async actualizarCotizaciones(cotizaciones: Partial<Configuracion['cotizaciones']>): Promise<void> {
+    try {
+      for (const [clave, valor] of Object.entries(cotizaciones)) {
+        if (typeof valor === 'number') {
+          await this.actualizar('cotizaciones', clave, valor);
+        } else if (typeof valor === 'string') {
+          await this.actualizarTexto('cotizaciones', clave, valor);
+        } else if (typeof valor === 'boolean') {
+          await this.actualizar('cotizaciones', clave, valor ? 1 : 0);
+        }
+      }
+    } catch (error) {
+      console.error('Error actualizando configuración de cotizaciones:', error);
+      throw error;
+    }
+  },
+
+  async actualizarCompleta(configuracion: Partial<Configuracion>): Promise<void> {
+    try {
+      if (configuracion.empresa) {
+        await this.actualizarEmpresa(configuracion.empresa);
+      }
+      if (configuracion.cotizaciones) {
+        await this.actualizarCotizaciones(configuracion.cotizaciones);
+      }
+      if (configuracion.ventasEstimadas !== undefined) {
+        await this.actualizar('general', 'ventas_estimadas', configuracion.ventasEstimadas);
+      }
+      // Los porcentajes, costos fijos y herramientas se manejan individualmente
+    } catch (error) {
+      console.error('Error actualizando configuración completa:', error);
+      throw error;
+    }
+  },
+
+  async eliminar(tipo: string, clave: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('configuracion')
+        .delete()
+        .eq('tipo', tipo)
+        .eq('clave', clave);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error eliminando configuración:', error);
+      throw error;
+    }
+  }
+};
+
+export const metasService = {
+  async obtenerTodas(): Promise<{ ventasMensuales: number, unidadesMensuales: number, margenPromedio: number, rotacionInventario: number }> {
+    try {
+      const { data, error } = await supabase
+        .from('metas')
+        .select('*');
+
+      if (error) throw error;
+
+      const metas = {
+        ventasMensuales: 0,
+        unidadesMensuales: 0,
+        margenPromedio: 0,
+        rotacionInventario: 0
+      };
+
+      data?.forEach(item => {
+        switch (item.clave) {
+          case 'ventas_mensuales':
+            metas.ventasMensuales = item.valor;
+            break;
+          case 'unidades_mensuales':
+            metas.unidadesMensuales = item.valor;
+            break;
+          case 'margen_promedio':
+            metas.margenPromedio = item.valor;
+            break;
+          case 'rotacion_inventario':
+            metas.rotacionInventario = item.valor;
+            break;
+        }
+      });
+
+      return metas;
+    } catch (error) {
+      console.error('Error obteniendo metas:', error);
+      throw error;
+    }
+  },
+
+  async actualizar(clave: string, valor: number): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('metas')
+        .upsert({ clave, valor }, { onConflict: 'clave' });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error actualizando meta:', error);
+      throw error;
+    }
+  }
+};
+
+export const alertasService = {
+  async obtenerTodas(): Promise<{ margenMinimo: number, stockMinimo: number, diasSinVenta: number, diferenciaPrecioCompetencia: number }> {
+    try {
+      const { data, error } = await supabase
+        .from('alertas')
+        .select('*');
+
+      if (error) throw error;
+
+      const alertas = {
+        margenMinimo: 0,
+        stockMinimo: 0,
+        diasSinVenta: 0,
+        diferenciaPrecioCompetencia: 0
+      };
+
+      data?.forEach(item => {
+        switch (item.clave) {
+          case 'margen_minimo':
+            alertas.margenMinimo = item.valor;
+            break;
+          case 'stock_minimo':
+            alertas.stockMinimo = item.valor;
+            break;
+          case 'dias_sin_venta':
+            alertas.diasSinVenta = item.valor;
+            break;
+          case 'diferencia_precio_competencia':
+            alertas.diferenciaPrecioCompetencia = item.valor;
+            break;
+        }
+      });
+
+      return alertas;
+    } catch (error) {
+      console.error('Error obteniendo alertas:', error);
+      throw error;
+    }
+  },
+
+  async actualizar(clave: string, valor: number): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('alertas')
+        .upsert({ clave, valor }, { onConflict: 'clave' });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error actualizando alerta:', error);
+      throw error;
+    }
+  }
+};

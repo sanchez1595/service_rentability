@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Minus, Save, X, Calculator, User, FileText, DollarSign, Trash2 } from 'lucide-react';
 import { Cliente, Servicio, CotizacionActual, ItemCotizacionActual } from '../../types/services';
 import { COTIZACION_INICIAL, ITEM_COTIZACION_INICIAL, IVA_PORCENTAJE } from '../../utils/servicesConstants';
-import { formatearInput, formatearMoneda } from '../../utils/formatters';
+import { formatearInput, formatearInputDecimal, formatearMoneda } from '../../utils/formatters';
 
 interface CrearCotizacionProps {
   clientes: Cliente[];
@@ -19,6 +19,10 @@ export const CrearCotizacion: React.FC<CrearCotizacionProps> = ({
 }) => {
   const [cotizacion, setCotizacion] = useState<CotizacionActual>(COTIZACION_INICIAL);
   const [guardando, setGuardando] = useState(false);
+
+  // Debug: Log inicial de servicios
+  console.log('CrearCotizacion - Servicios recibidos:', servicios);
+  console.log('CrearCotizacion - Servicios activos:', servicios.filter(s => s.activo));
 
   const manejarCambioCotizacion = (campo: keyof CotizacionActual, valor: string | ItemCotizacionActual[]) => {
     setCotizacion(prev => ({
@@ -70,11 +74,26 @@ export const CrearCotizacion: React.FC<CrearCotizacionProps> = ({
   };
 
   const seleccionarServicio = (index: number, servicioId: string) => {
+    console.log('Seleccionando servicio:', { index, servicioId });
     const servicio = servicios.find(s => s.id === servicioId);
+    console.log('Servicio encontrado:', servicio);
+    
     if (servicio) {
-      actualizarItem(index, 'servicioId', servicioId);
-      actualizarItem(index, 'descripcion', servicio.descripcion || servicio.nombre);
-      actualizarItem(index, 'precioUnitario', servicio.precioSugerido);
+      // Hacer todas las actualizaciones en una sola operación para evitar race conditions
+      const nuevosItems = [...cotizacion.items];
+      nuevosItems[index] = {
+        ...nuevosItems[index],
+        servicioId,
+        descripcion: servicio.descripcion || servicio.nombre,
+        precioUnitario: servicio.precioSugerido
+      };
+
+      console.log('Actualizando item:', nuevosItems[index]);
+
+      setCotizacion(prev => ({
+        ...prev,
+        items: nuevosItems
+      }));
     }
   };
 
@@ -116,10 +135,20 @@ export const CrearCotizacion: React.FC<CrearCotizacionProps> = ({
       return;
     }
 
-    // Validar que todos los items tengan servicio seleccionado
-    const itemsInvalidos = cotizacion.items.some(item => !item.servicioId || !item.cantidad || !item.precioUnitario);
-    if (itemsInvalidos) {
-      alert('Todos los items deben tener servicio, cantidad y precio');
+    // Validar que todos los items tengan servicio seleccionado, cantidad y precio válidos
+    const erroresItems: string[] = [];
+    cotizacion.items.forEach((item, index) => {
+      const servicioValido = !!item.servicioId;
+      const cantidadValida = !!item.cantidad && parseFloat(item.cantidad) > 0;
+      const precioValido = !!item.precioUnitario && parseFloat(item.precioUnitario) > 0;
+      
+      if (!servicioValido) erroresItems.push(`Item ${index + 1}: Debe seleccionar un servicio`);
+      if (!cantidadValida) erroresItems.push(`Item ${index + 1}: La cantidad debe ser mayor a 0`);
+      if (!precioValido) erroresItems.push(`Item ${index + 1}: El precio debe ser mayor a 0`);
+    });
+    
+    if (erroresItems.length > 0) {
+      alert('Por favor corrige los siguientes errores:\n\n' + erroresItems.join('\n'));
       return;
     }
 
@@ -281,7 +310,9 @@ export const CrearCotizacion: React.FC<CrearCotizacionProps> = ({
           </div>
 
           <div className="space-y-4">
-            {cotizacion.items.map((item, index) => (
+            {cotizacion.items.map((item, index) => {
+              console.log(`Renderizando item ${index}:`, item);
+              return (
               <div key={index} className="border border-slate-200 rounded-xl p-4">
                 <div className="grid gap-4">
                   <div className="grid md:grid-cols-2 gap-4">
@@ -291,15 +322,21 @@ export const CrearCotizacion: React.FC<CrearCotizacionProps> = ({
                       </label>
                       <select
                         value={item.servicioId}
-                        onChange={(e) => seleccionarServicio(index, e.target.value)}
+                        onChange={(e) => {
+                          console.log('Select onChange - value:', e.target.value);
+                          seleccionarServicio(index, e.target.value);
+                        }}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                       >
                         <option value="">Seleccionar servicio...</option>
-                        {servicios.filter(s => s.activo).map((servicio) => (
-                          <option key={servicio.id} value={servicio.id}>
-                            {servicio.nombre} - ${formatearMoneda(parseFloat(servicio.precioSugerido))}
-                          </option>
-                        ))}
+                        {servicios.filter(s => s.activo).map((servicio) => {
+                          console.log('Renderizando opción:', { id: servicio.id, nombre: servicio.nombre, precio: servicio.precioSugerido });
+                          return (
+                            <option key={servicio.id} value={servicio.id}>
+                              {servicio.nombre} - ${formatearMoneda(parseFloat(servicio.precioSugerido))}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -323,7 +360,7 @@ export const CrearCotizacion: React.FC<CrearCotizacionProps> = ({
                         </label>
                         <input
                           type="text"
-                          value={formatearInput(item.precioUnitario)}
+                          value={formatearInputDecimal(item.precioUnitario)}
                           onChange={(e) => actualizarItem(index, 'precioUnitario', e.target.value)}
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                           placeholder="0"
@@ -378,7 +415,8 @@ export const CrearCotizacion: React.FC<CrearCotizacionProps> = ({
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {cotizacion.items.length === 0 && (
               <div className="text-center py-8 border-2 border-dashed border-slate-300 rounded-xl">

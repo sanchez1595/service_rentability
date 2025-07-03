@@ -31,7 +31,9 @@ import { GestionServicios } from './GestionServicios';
 import { GestionClientes } from '../clientes/GestionClientes';
 import { GestionCotizaciones } from '../cotizaciones/GestionCotizaciones';
 import { GestionProyectos } from '../proyectos/GestionProyectos';
-import { ConfiguracionComponent } from '../calculadora/Configuracion';
+import { ConfiguracionServicios } from './ConfiguracionServicios';
+import { ReportesServicios } from './ReportesServicios';
+import { SystemStatus } from '../debug/SystemStatus';
 
 export const SistemaServicios: React.FC = () => {
   const {
@@ -62,6 +64,7 @@ export const SistemaServicios: React.FC = () => {
     actualizarCotizacion,
     aprobarCotizacion,
     rechazarCotizacion,
+    eliminarCotizacion,
     // Proyectos
     actualizarProyecto,
     completarProyecto,
@@ -79,6 +82,7 @@ export const SistemaServicios: React.FC = () => {
     eliminarDesembolso,
     // Configuración
     actualizarConfiguracion,
+    actualizarConfiguracionCompleta,
     eliminarConfiguracion,
     actualizarMeta,
     actualizarAlerta
@@ -100,7 +104,8 @@ export const SistemaServicios: React.FC = () => {
     { id: 'cotizaciones', label: 'Cotizaciones', icon: FileText, color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
     { id: 'proyectos', label: 'Proyectos', icon: Briefcase, color: 'text-orange-600', bgColor: 'bg-orange-50' },
     { id: 'reportes', label: 'Reportes', icon: BarChart3, color: 'text-pink-600', bgColor: 'bg-pink-50' },
-    { id: 'configuracion', label: 'Configuración', icon: Settings, color: 'text-gray-600', bgColor: 'bg-gray-50' }
+    { id: 'configuracion', label: 'Configuración', icon: Settings, color: 'text-gray-600', bgColor: 'bg-gray-50' },
+    { id: 'debug', label: '🔍 Debug Sistema', icon: Settings, color: 'text-red-600', bgColor: 'bg-red-50' }
   ];
 
   const currentNavItem = navigationItems.find(item => item.id === vistaActiva);
@@ -344,10 +349,12 @@ export const SistemaServicios: React.FC = () => {
             cotizaciones={cotizaciones}
             clientes={clientes}
             servicios={servicios}
+            configuracion={configuracion}
             onCrearCotizacion={agregarCotizacion}
             onActualizarCotizacion={actualizarCotizacion}
             onAprobarCotizacion={aprobarCotizacion}
             onRechazarCotizacion={rechazarCotizacion}
+            onEliminarCotizacion={eliminarCotizacion}
           />
         );
       
@@ -369,16 +376,32 @@ export const SistemaServicios: React.FC = () => {
       
       case 'configuracion':
         return (
-          <ConfiguracionComponent
+          <ConfiguracionServicios
             configuracion={configuracion}
             metas={metas}
             alertas={alertas}
             onActualizarConfiguracion={actualizarConfiguracionHandler}
+            onActualizarConfiguracionCompleta={actualizarConfiguracionCompleta}
             onActualizarMetas={actualizarMetasHandler}
             onActualizarAlertas={actualizarAlertasHandler}
-            onActualizarTodosLosPrecios={async () => {}} // No aplica para servicios
           />
         );
+      
+      case 'reportes':
+        return (
+          <ReportesServicios
+            clientes={clientes}
+            servicios={servicios}
+            cotizaciones={cotizaciones}
+            proyectos={proyectos}
+            pagos={pagos}
+            desembolsos={desembolsos}
+            metricas={metricas}
+          />
+        );
+      
+      case 'debug':
+        return <SystemStatus />;
       
       default:
         return (

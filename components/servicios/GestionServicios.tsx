@@ -33,8 +33,34 @@ export const GestionServicios: React.FC<GestionServiciosProps> = ({
   onCancelarEdicion,
   configuracion
 }) => {
-  const formatearNumero = (numero: number | string) => {
-    return new Intl.NumberFormat('es-CO').format(Number(numero));
+  const formatearNumero = (numero: number | string | undefined | null) => {
+    if (numero === null || numero === undefined || numero === '') {
+      return '0';
+    }
+    
+    const num = typeof numero === 'string' ? parseFloat(numero.replace(/[^\d.-]/g, '')) : numero;
+    
+    if (isNaN(num)) {
+      return '0';
+    }
+    
+    return new Intl.NumberFormat('es-CO').format(num);
+  };
+
+  const formatearPrecio = (precio: string | number | undefined | null) => {
+    if (precio === null || precio === undefined || precio === 0 || precio === '0') {
+      return 'No definido';
+    }
+    return `$${formatearNumero(precio)}`;
+  };
+
+  const mostrarPrecioServicio = (servicio: any) => {
+    if (servicio.tipoServicio === 'por_horas') {
+      const precio = formatearPrecio(servicio.precioPorHora);
+      return precio === 'No definido' ? 'No definido' : `${precio}/hora`;
+    } else {
+      return formatearPrecio(servicio.precioSugerido);
+    }
   };
 
   const obtenerColorCategoria = (categoria: string) => {
@@ -368,12 +394,17 @@ export const GestionServicios: React.FC<GestionServiciosProps> = ({
 
                     <div className="flex items-center space-x-6 text-sm">
                       <div className="flex items-center space-x-1">
-                        <DollarSign className="w-4 h-4 text-emerald-600" />
-                        <span className="font-semibold text-emerald-700">
-                          {servicio.tipoServicio === 'por_horas' 
-                            ? `$${formatearNumero(servicio.precioPorHora || '0')}/hora`
-                            : `$${formatearNumero(servicio.precioSugerido)}`
-                          }
+                        <DollarSign className={`w-4 h-4 ${
+                          mostrarPrecioServicio(servicio) === 'No definido' 
+                            ? 'text-slate-400' 
+                            : 'text-emerald-600'
+                        }`} />
+                        <span className={`font-semibold ${
+                          mostrarPrecioServicio(servicio) === 'No definido' 
+                            ? 'text-slate-500' 
+                            : 'text-emerald-700'
+                        }`}>
+                          {mostrarPrecioServicio(servicio)}
                         </span>
                       </div>
 

@@ -8,9 +8,11 @@ import {
   Pago,
   CategoriaDesembolso,
   Desembolso,
-  MetricasServicio
+  MetricasServicio,
+  Configuracion,
+  Metas,
+  Alertas
 } from '../types/services';
-import { Configuracion, Metas, Alertas } from '../types';
 import {
   clientesService,
   serviciosService,
@@ -19,17 +21,40 @@ import {
   planesPagoService,
   pagosService,
   categoriasDesembolsoService,
-  desembolsosService
+  desembolsosService,
+  configuracionService,
+  metasService,
+  alertasService
 } from '../services/servicesDatabase';
-import { 
-  obtenerConfiguracion,
-  obtenerMetas,
-  obtenerAlertas,
-  actualizarConfiguracion as actualizarConfigDB,
-  eliminarConfiguracion as eliminarConfigDB,
-  actualizarMeta as actualizarMetaDB,
-  actualizarAlerta as actualizarAlertaDB
-} from '../services/database';
+
+// Funciones reales de configuración con Supabase
+const obtenerConfiguracion = async (): Promise<Configuracion> => {
+  return await configuracionService.obtenerToda();
+};
+
+const obtenerMetas = async (): Promise<Metas> => {
+  return await metasService.obtenerTodas();
+};
+
+const obtenerAlertas = async (): Promise<Alertas> => {
+  return await alertasService.obtenerTodas();
+};
+
+const actualizarConfigDB = async (tipo: string, clave: string, valor: number): Promise<void> => {
+  return await configuracionService.actualizar(tipo, clave, valor);
+};
+
+const eliminarConfigDB = async (tipo: string, clave: string): Promise<void> => {
+  return await configuracionService.eliminar(tipo, clave);
+};
+
+const actualizarMetaDB = async (clave: string, valor: number): Promise<void> => {
+  return await metasService.actualizar(clave, valor);
+};
+
+const actualizarAlertaDB = async (clave: string, valor: number): Promise<void> => {
+  return await alertasService.actualizar(clave, valor);
+};
 
 // Estado inicial
 interface ServicesState {
@@ -83,7 +108,27 @@ const initialState: ServicesState = {
       servidor: 100000,
       dominio: 120000
     },
-    ventasEstimadas: 100
+    ventasEstimadas: 100,
+    empresa: {
+      nombre: 'Mi Empresa SAS',
+      nit: '123456789-0',
+      direccion: 'Calle 123 #45-67',
+      telefono: '+57 300 123 4567',
+      email: 'contacto@miempresa.com',
+      ciudad: 'Bogotá, Colombia'
+    },
+    cotizaciones: {
+      validezDias: 30,
+      ivaDefecto: 19,
+      terminosCondiciones: `1. Validez de la cotización: 30 días a partir de la fecha de emisión.
+2. Forma de pago: 50% anticipo, 50% contra entrega.
+3. Los precios no incluyen IVA.
+4. Cualquier trabajo adicional será cotizado por separado.
+5. El tiempo de entrega está sujeto a la aprobación de la cotización.`,
+      notaPie: 'Gracias por confiar en nosotros',
+      mostrarLogo: false,
+      formatoNumero: 'QUOTE-{YYYY}-{###}'
+    }
   },
   metas: {
     ventasMensuales: 5000000,
@@ -117,6 +162,7 @@ type ServicesAction =
   | { type: 'SET_COTIZACIONES'; payload: Cotizacion[] }
   | { type: 'ADD_COTIZACION'; payload: Cotizacion }
   | { type: 'UPDATE_COTIZACION'; payload: { id: string; cotizacion: Cotizacion } }
+  | { type: 'REMOVE_COTIZACION'; payload: string }
   | { type: 'SET_PROYECTOS'; payload: Proyecto[] }
   | { type: 'ADD_PROYECTO'; payload: Proyecto }
   | { type: 'UPDATE_PROYECTO'; payload: { id: string; proyecto: Proyecto } }
@@ -198,6 +244,12 @@ function servicesReducer(state: ServicesState, action: ServicesAction): Services
         cotizaciones: state.cotizaciones.map(c => 
           c.id === action.payload.id ? action.payload.cotizacion : c
         )
+      };
+    
+    case 'REMOVE_COTIZACION':
+      return {
+        ...state,
+        cotizaciones: state.cotizaciones.filter(c => c.id !== action.payload)
       };
     
     case 'SET_PROYECTOS':
@@ -300,6 +352,7 @@ interface ServicesContextType extends ServicesState {
   actualizarCotizacion: (id: string, cotizacion: Partial<Cotizacion>) => Promise<void>;
   aprobarCotizacion: (id: string) => Promise<void>;
   rechazarCotizacion: (id: string, motivo: string) => Promise<void>;
+  eliminarCotizacion: (id: string) => Promise<void>;
   
   // Proyectos
   actualizarProyecto: (id: string, proyecto: Partial<Proyecto>) => Promise<void>;
@@ -324,6 +377,7 @@ interface ServicesContextType extends ServicesState {
   
   // Configuración
   actualizarConfiguracion: (tipo: string, clave: string, valor: number) => Promise<void>;
+  actualizarConfiguracionCompleta: (config: Partial<Configuracion>) => Promise<void>;
   eliminarConfiguracion: (tipo: string, clave: string) => Promise<void>;
   
   // Metas y alertas
@@ -574,6 +628,11 @@ export function ServicesProvider({ children }: ServicesProviderProps) {
     }
   };
 
+  const eliminarCotizacion = async (id: string) => {
+    await cotizacionesService.eliminar(id);
+    dispatch({ type: 'REMOVE_COTIZACION', payload: id });
+  };
+
   // Funciones de proyectos
   const actualizarProyecto = async (id: string, proyecto: Partial<Proyecto>) => {
     const proyectoActualizado = await proyectosService.actualizar(id, proyecto);
@@ -643,6 +702,12 @@ export function ServicesProvider({ children }: ServicesProviderProps) {
     dispatch({ type: 'SET_CONFIGURACION', payload: nuevaConfiguracion });
   };
 
+  const actualizarConfiguracionCompleta = async (config: Partial<Configuracion>) => {
+    await configuracionService.actualizarCompleta(config);
+    const nuevaConfiguracion = await obtenerConfiguracion();
+    dispatch({ type: 'SET_CONFIGURACION', payload: nuevaConfiguracion });
+  };
+
   const eliminarConfiguracion = async (tipo: string, clave: string) => {
     await eliminarConfigDB(tipo, clave);
     const nuevaConfiguracion = await obtenerConfiguracion();
@@ -674,6 +739,7 @@ export function ServicesProvider({ children }: ServicesProviderProps) {
     actualizarCotizacion,
     aprobarCotizacion,
     rechazarCotizacion,
+    eliminarCotizacion,
     actualizarProyecto,
     completarProyecto,
     crearPlanPago,
@@ -686,6 +752,7 @@ export function ServicesProvider({ children }: ServicesProviderProps) {
     actualizarDesembolso,
     eliminarDesembolso,
     actualizarConfiguracion,
+    actualizarConfiguracionCompleta,
     eliminarConfiguracion,
     actualizarMeta,
     actualizarAlerta,
